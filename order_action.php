@@ -33,10 +33,21 @@ $authCandidates = [
     $rootDir . '/public_html/seller/guard.php',
     $rootDir . '/public_html/seller/auth.php',
 ];
-
 foreach ($authCandidates as $authFile) {
     if (is_file($authFile)) {
         require_once $authFile;
+    }
+}
+
+$listingBootstrapCandidates = [
+    $rootDir . '/seller/_listing_bootstrap.php',
+    $rootDir . '/member/_listing_bootstrap.php',
+];
+
+foreach ($listingBootstrapCandidates as $listingBootstrapFile) {
+    if (is_file($listingBootstrapFile)) {
+        require_once $listingBootstrapFile;
+        break;
     }
 }
 
@@ -63,6 +74,10 @@ function resolve_pdo(): ?PDO
 function current_seller_id(): int
 {
     $candidates = [
+        $_SESSION['user']['id'] ?? null,
+        $_SESSION['seller']['id'] ?? null,
+        $_SESSION['member']['id'] ?? null,
+        $_SESSION['user_id'] ?? null,
         $_SESSION['seller_id'] ?? null,
         $_SESSION['seller']['id'] ?? null,
         $_SESSION['auth']['seller_id'] ?? null,
@@ -135,14 +150,37 @@ $carrier = trim((string) ($_POST['carrier'] ?? ''));
 $csrfToken = (string) ($_POST['csrf_token'] ?? '');
 $returnUrlInput = (string) ($_POST['return_url'] ?? '');
 
-if (
-    isset($_SESSION['csrf_token'])
-    && is_string($_SESSION['csrf_token'])
-    && $_SESSION['csrf_token'] !== ''
-    && !hash_equals($_SESSION['csrf_token'], $csrfToken)
-) {
-    set_flash('error', 'Invalid security token.');
-    redirect_to('/seller/orders.php');
+$sessionCsrfTokens = [];
+
+if (isset($_SESSION['csrf_token']) && is_string($_SESSION['csrf_token']) && $_SESSION['csrf_token'] !== '') {
+    $sessionCsrfTokens[] = $_SESSION['csrf_token'];
+}
+
+foreach ($_SESSION as $sessionKey => $sessionValue) {
+    if (
+        is_string($sessionKey)
+        && str_starts_with($sessionKey, '_csrf_')
+        && is_string($sessionValue)
+        && $sessionValue !== ''
+    ) {
+        $sessionCsrfTokens[] = $sessionValue;
+    }
+}
+
+if ($sessionCsrfTokens !== []) {
+    $csrfValid = false;
+
+    foreach (array_values(array_unique($sessionCsrfTokens)) as $expectedCsrfToken) {
+        if ($csrfToken !== '' && hash_equals($expectedCsrfToken, $csrfToken)) {
+            $csrfValid = true;
+            break;
+        }
+    }
+
+    if (!$csrfValid) {
+        set_flash('error', 'Invalid security token.');
+        redirect_to('/seller/orders.php');
+    }
 }
 
 if ($orderItemId <= 0) {
